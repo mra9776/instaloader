@@ -51,7 +51,7 @@ class InstaloaderContext:
 
         self.user_agent = user_agent if user_agent is not None else default_user_agent()
         self.request_timeout = request_timeout
-        self._session = self.get_anonymous_session()
+        self._session = self._session_provider.get_anonymous_session()
         self.username = None
         self.sleep = sleep
         self.quiet = quiet
@@ -80,7 +80,7 @@ class InstaloaderContext:
     def anonymous_copy(self):
         session = self._session
         username = self.username
-        self._session = self.get_anonymous_session()
+        self._session = self._session_provider.get_anonymous_session()
         self.username = None
         try:
             yield self
@@ -151,17 +151,6 @@ class InstaloaderContext:
             del header['X-Requested-With']
         return header
 
-    def get_anonymous_session(self) -> requests.Session:
-        """Returns our default anonymous requests.Session object."""
-        session = requests.Session()
-        session.cookies.update({'sessionid': '', 'mid': '', 'ig_pr': '1',
-                                'ig_vw': '1920', 'csrftoken': '',
-                                's_network': '', 'ds_user_id': ''})
-        session.headers.update(self._default_http_header(empty_session_only=True))
-        # Override default timeout behavior.
-        # Need to silence mypy bug for this. See: https://github.com/python/mypy/issues/2427
-        session.request = partial(session.request, timeout=self.request_timeout) # type: ignore
-        return session
 
     def save_session_to_file(self, sessionfile):
         """Not meant to be used directly, use :meth:`Instaloader.save_session_to_file`."""
@@ -413,7 +402,7 @@ class InstaloaderContext:
         :param rhx_gis: 'rhx_gis' variable as somewhere returned by Instagram, needed to 'sign' request
         :return: The server's response dictionary.
         """
-        with self._session_provider.copy_session(self._session, self.request_timeout) as tmpsession:
+        with self._session_provider.copy_session(self.request_timeout) as tmpsession:
             tmpsession.headers.update(self._default_http_header(empty_session_only=True))
             del tmpsession.headers['Connection']
             del tmpsession.headers['Content-Length']
@@ -486,7 +475,7 @@ class InstaloaderContext:
         :raises ConnectionException: When query repeatedly failed.
 
         .. versionadded:: 4.2.1"""
-        with self._session_provider.copy_session(self._session, self.request_timeout) as tempsession:
+        with self._session_provider.copy_session(self.request_timeout) as tempsession:
             tempsession.headers['User-Agent'] = 'Instagram 146.0.0.27.125 (iPhone12,1; iOS 13_3; en_US; en-US; ' \
                                                 'scale=2.00; 1656x3584; 190542906)'
             for header in ['Host', 'Origin', 'X-Instagram-AJAX', 'X-Requested-With']:
@@ -513,7 +502,7 @@ class InstaloaderContext:
         :raises ConnectionException: When download failed.
 
         .. versionadded:: 4.2.1"""
-        with self.get_anonymous_session() as anonymous_session:
+        with self._session_provider.get_anonymous_session() as anonymous_session:
             resp = anonymous_session.get(url, stream=True)
         if resp.status_code == 200:
             resp.raw.decode_content = True
@@ -544,7 +533,7 @@ class InstaloaderContext:
 
         .. versionadded:: 4.7.6
         """
-        with self.get_anonymous_session() as anonymous_session:
+        with self._session_provider.get_anonymous_session() as anonymous_session:
             resp = anonymous_session.head(url, allow_redirects=allow_redirects)
         if resp.status_code == 200:
             return resp
@@ -589,7 +578,20 @@ class SessionProvider:
         return new
 
     def create_session(self) -> requests.Session:
-        return requests.Session()
+        self.session = requests.Session()
+        return self.session
+    
+    def get_anonymous_session(self) -> requests.Session:
+        """Returns our default anonymous requests.Session object."""
+        session = requests.Session()
+        session.cookies.update({'sessionid': '', 'mid': '', 'ig_pr': '1',
+                                'ig_vw': '1920', 'csrftoken': '',
+                                's_network': '', 'ds_user_id': ''})
+        session.headers.update(self._default_http_header(empty_session_only=True))
+        # Override default timeout behavior.
+        # Need to silence mypy bug for this. See: https://github.com/python/mypy/issues/2427
+        session.request = partial(session.request, timeout=self.request_timeout) # type: ignore
+        return session
 
 
 class RateController:
