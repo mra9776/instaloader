@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import json
 import os
@@ -165,11 +166,24 @@ class InstaloaderContext:
     def save_session_to_file(self, sessionfile):
         """Not meant to be used directly, use :meth:`Instaloader.save_session_to_file`."""
         pickle.dump(requests.utils.dict_from_cookiejar(self._session.cookies), sessionfile)
+    
+    def save_session_base64(self) -> str:
+        """Not meant to be used directly, use :meth:`Instaloader.save_session_base64`."""
+        session_bytes = pickle.dumps(requests.utils.dict_from_cookiejar(self._session.cookies))
+        return base64.b64encode(session_bytes).decode('ascii')
 
     def load_session_from_file(self, username, sessionfile):
         """Not meant to be used directly, use :meth:`Instaloader.load_session_from_file`."""
+        self._load_session(username, pickle.load(sessionfile))
+    
+    def load_session_base64(self, username, session_string: str):
+        """Not meant to be used directly, use :meth:`Instaloader.load_session_base64`."""
+        session_bytes = base64.decodestring(session_string.encode('ascii'))
+        self._load_session(username, pickle.loads(session_bytes))
+
+    def _load_session(self, username, cookies_dict):
         session = self._session_provider.create_session()
-        session.cookies = requests.utils.cookiejar_from_dict(pickle.load(sessionfile))
+        session.cookies = requests.utils.cookiejar_from_dict(cookies_dict)
         session.headers.update(self._default_http_header())
         session.headers.update({'X-CSRFToken': session.cookies.get_dict()['csrftoken']})
         # Override default timeout behavior.
@@ -574,7 +588,7 @@ class SessionProvider:
         new.request = partial(new.request, timeout=request_timeout) # type: ignore
         return new
 
-    def create_session() -> requests.Session:
+    def create_session(self) -> requests.Session:
         return requests.Session()
 
 

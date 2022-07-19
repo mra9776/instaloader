@@ -606,6 +606,14 @@ class Instaloader:
             self.context.save_session_to_file(sessionfile)
             self.context.log("Saved session to %s." % filename)
 
+    @_requires_login
+    def save_session_base64(self) -> None:
+        """returns internally stored :class:`requests.Session` object in base64.
+
+        :raises LoginRequiredException: If called without being logged in.
+        """
+        return self.context.save_session_base64()
+
     def load_session_from_file(self, username: str, filename: Optional[str] = None) -> None:
         """Internally stores :class:`requests.Session` object loaded from file.
 
@@ -621,6 +629,11 @@ class Instaloader:
             self.context.load_session_from_file(username, sessionfile)
             self.context.log("Loaded session from %s." % filename)
 
+    def load_session_base64(self, username: str, session_string: str) -> None:
+        self.context.load_session_base64(username, session_string)
+        self.context.log("Loaded session from string %s." % session_string)
+    
+    
     def test_login(self) -> Optional[str]:
         """Returns the Instagram username to which given :class:`requests.Session` object belongs, or None."""
         return self.context.test_login()
