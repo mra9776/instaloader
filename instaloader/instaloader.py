@@ -19,7 +19,7 @@ import requests
 import urllib3  # type: ignore
 
 from .exceptions import *
-from .instaloadercontext import InstaloaderContext, RateController
+from .instaloadercontext import InstaloaderContext, RateController, SessionProvider
 from .lateststamps import LatestStamps
 from .nodeiterator import NodeIterator, resumable_iteration
 from .sectioniterator import SectionIterator
@@ -196,6 +196,7 @@ class Instaloader:
     :param max_connection_attempts: :option:`--max-connection-attempts`
     :param request_timeout: :option:`--request-timeout`, set per-request timeout (seconds)
     :param rate_controller: Generator for a :class:`RateController` to override rate controlling behavior
+    :param session_provider: Generator for a :class:`SessionProvider` to generate session required to make a http request
     :param resume_prefix: :option:`--resume-prefix`, or None for :option:`--no-resume`.
     :param check_resume_bbd: Whether to check the date of expiry of resume files and reject them if expired.
     :param slide: :option:`--slide`
@@ -232,11 +233,12 @@ class Instaloader:
                  fatal_status_codes: Optional[List[int]] = None,
                  iphone_support: bool = True,
                  title_pattern: Optional[str] = None,
-                 sanitize_paths: bool = False):
+                 sanitize_paths: bool = False,
+                 session_provider: Optional[Callable[[InstaloaderContext], SessionProvider]] = None):
 
         self.context = InstaloaderContext(sleep, quiet, user_agent, max_connection_attempts,
                                           request_timeout, rate_controller, fatal_status_codes,
-                                          iphone_support)
+                                          iphone_support, session_provider)
 
         # configuration parameters
         self.dirname_pattern = dirname_pattern or "{target}"

@@ -13,22 +13,12 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from functools import partial
 from typing import Any, Callable, Dict, Iterator, List, Optional, Union
+from elasticsearch import RequestError
 
 import requests
 import requests.utils
 
 from .exceptions import *
-
-
-def copy_session(session: requests.Session, request_timeout: Optional[float] = None) -> requests.Session:
-    """Duplicates a requests.Session."""
-    new = requests.Session()
-    new.cookies = requests.utils.cookiejar_from_dict(requests.utils.dict_from_cookiejar(session.cookies))
-    new.headers = session.headers.copy()
-    # Override default timeout behavior.
-    # Need to silence mypy bug for this. See: https://github.com/python/mypy/issues/2427
-    new.request = partial(new.request, timeout=request_timeout) # type: ignore
-    return new
 
 
 def default_user_agent() -> str:
@@ -55,7 +45,8 @@ class InstaloaderContext:
                  max_connection_attempts: int = 3, request_timeout: float = 300.0,
                  rate_controller: Optional[Callable[["InstaloaderContext"], "RateController"]] = None,
                  fatal_status_codes: Optional[List[int]] = None,
-                 iphone_support: bool = True):
+                 iphone_support: bool = True, 
+                 session_provider: Optional[Callable[["InstaloaderContext"], "SessionProvider"]] = None):
 
         self.user_agent = user_agent if user_agent is not None else default_user_agent()
         self.request_timeout = request_timeout
@@ -73,6 +64,7 @@ class InstaloaderContext:
         self.error_log = []                      # type: List[str]
 
         self._rate_controller = rate_controller(self) if rate_controller is not None else RateController(self)
+        self._session_provider: SessionProvider = session_provider(self) if session_provider is not None else SessionProvider(self)
 
         # Can be set to True for testing, disables supression of InstaloaderContext._error_catcher
         self.raise_all_errors = False
@@ -176,7 +168,7 @@ class InstaloaderContext:
 
     def load_session_from_file(self, username, sessionfile):
         """Not meant to be used directly, use :meth:`Instaloader.load_session_from_file`."""
-        session = requests.Session()
+        session = self._session_provider.create_session()
         session.cookies = requests.utils.cookiejar_from_dict(pickle.load(sessionfile))
         session.headers.update(self._default_http_header())
         session.headers.update({'X-CSRFToken': session.cookies.get_dict()['csrftoken']})
@@ -203,7 +195,7 @@ class InstaloaderContext:
         import http.client
         # pylint:disable=protected-access
         http.client._MAXHEADERS = 200
-        session = requests.Session()
+        session = self._session_provider.create_session()
         session.cookies.update({'sessionid': '', 'mid': '', 'ig_pr': '1',
                                 'ig_vw': '1920', 'ig_cb': '1', 'csrftoken': '',
                                 's_network': '', 'ds_user_id': ''})
@@ -228,7 +220,7 @@ class InstaloaderContext:
                 "Login error: JSON decode fail, {} - {}.".format(login.status_code, login.reason)
             ) from err
         if resp_json.get('two_factor_required'):
-            two_factor_session = copy_session(session, self.request_timeout)
+            two_factor_session = self._session_provider.copy_session(session, self.request_timeout)
             two_factor_session.headers.update({'X-CSRFToken': csrf_token})
             two_factor_session.cookies.update({'csrftoken': csrf_token})
             self.two_factor_auth_pending = (two_factor_session,
@@ -342,7 +334,7 @@ class InstaloaderContext:
                 else:
                     break
             if resp.status_code == 400:
-                raise QueryReturnedBadRequestException("400 Bad Request")
+                raise QueryReturnedBadRequestException("400 Bad Request" + " " + resp.text)
             if resp.status_code == 404:
                 raise QueryReturnedNotFoundException("404 Not Found")
             if resp.status_code == 429:
@@ -407,7 +399,7 @@ class InstaloaderContext:
         :param rhx_gis: 'rhx_gis' variable as somewhere returned by Instagram, needed to 'sign' request
         :return: The server's response dictionary.
         """
-        with copy_session(self._session, self.request_timeout) as tmpsession:
+        with self._session_provider.copy_session(self._session, self.request_timeout) as tmpsession:
             tmpsession.headers.update(self._default_http_header(empty_session_only=True))
             del tmpsession.headers['Connection']
             del tmpsession.headers['Content-Length']
@@ -480,7 +472,7 @@ class InstaloaderContext:
         :raises ConnectionException: When query repeatedly failed.
 
         .. versionadded:: 4.2.1"""
-        with copy_session(self._session, self.request_timeout) as tempsession:
+        with self._session_provider.copy_session(self._session, self.request_timeout) as tempsession:
             tempsession.headers['User-Agent'] = 'Instagram 146.0.0.27.125 (iPhone12,1; iOS 13_3; en_US; en-US; ' \
                                                 'scale=2.00; 1656x3584; 190542906)'
             for header in ['Host', 'Origin', 'X-Instagram-AJAX', 'X-Requested-With']:
@@ -561,6 +553,29 @@ class InstaloaderContext:
         if self._root_rhx_gis is None:
             self._root_rhx_gis = self.get_json('', {}).get('rhx_gis', '')
         return self._root_rhx_gis or None
+
+class SessionProvider:
+    """
+    Class Singleton handle creation of requests.Session()
+    """
+    
+    def __init__(self, context: InstaloaderContext):
+        self._context = context
+        self.session: requests.Session = None
+    
+    def copy_session(self, request_timeout: Optional[float] = None) -> requests.Session:
+        """Duplicates a requests.Session."""
+        new = requests.Session()
+        new.cookies = requests.utils.cookiejar_from_dict(requests.utils.dict_from_cookiejar(self.session.cookies))
+        new.headers = self.session.headers.copy()
+        new.proxies = self.session.proxies
+        # Override default timeout behavior.
+        # Need to silence mypy bug for this. See: https://github.com/python/mypy/issues/2427
+        new.request = partial(new.request, timeout=request_timeout) # type: ignore
+        return new
+
+    def create_session() -> requests.Session:
+        return requests.Session()
 
 
 class RateController:
