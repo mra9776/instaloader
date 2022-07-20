@@ -14,7 +14,6 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from typing import Any, Callable, Dict, Iterator, List, Optional, Union
-from elasticsearch import RequestError
 
 import requests
 import requests.utils

@@ -607,7 +607,7 @@ class Instaloader:
             self.context.log("Saved session to %s." % filename)
 
     @_requires_login
-    def save_session_base64(self) -> None:
+    def save_session_base64(self) -> str:
         """returns internally stored :class:`requests.Session` object in base64.
 
         :raises LoginRequiredException: If called without being logged in.
