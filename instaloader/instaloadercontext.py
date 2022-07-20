@@ -11,7 +11,7 @@ import textwrap
 import time
 import urllib.parse
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import partial
 from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 from elasticsearch import RequestError
@@ -51,7 +51,6 @@ class InstaloaderContext:
 
         self.user_agent = user_agent if user_agent is not None else default_user_agent()
         self.request_timeout = request_timeout
-        self._session = self._session_provider.get_anonymous_session()
         self.username = None
         self.sleep = sleep
         self.quiet = quiet
@@ -66,6 +65,7 @@ class InstaloaderContext:
 
         self._rate_controller = rate_controller(self) if rate_controller is not None else RateController(self)
         self._session_provider: SessionProvider = session_provider(self) if session_provider is not None else SessionProvider(self)
+        self._session = self._session_provider.get_anonymous_session()
 
         # Can be set to True for testing, disables supression of InstaloaderContext._error_catcher
         self.raise_all_errors = False
@@ -154,12 +154,19 @@ class InstaloaderContext:
 
     def save_session_to_file(self, sessionfile):
         """Not meant to be used directly, use :meth:`Instaloader.save_session_to_file`."""
-        pickle.dump(requests.utils.dict_from_cookiejar(self._session.cookies), sessionfile)
+        pickle.dump(self._dump_session_data(), sessionfile)
     
     def save_session_base64(self) -> str:
         """Not meant to be used directly, use :meth:`Instaloader.save_session_base64`."""
-        session_bytes = pickle.dumps(requests.utils.dict_from_cookiejar(self._session.cookies))
+        session_bytes = pickle.dumps(self._dump_session_data())
         return base64.b64encode(session_bytes).decode('ascii')
+
+    def _dump_session_data(self):
+        data = requests.utils.dict_from_cookiejar(self._session.cookies)
+        min_expire_time = [cookie.expires for cookie in self._session.cookies if cookie.expires is not None]
+        if min_expire_time:
+            data['__min_expire_time__'] = min(min_expire_time)
+        return data
 
     def load_session_from_file(self, username, sessionfile):
         """Not meant to be used directly, use :meth:`Instaloader.load_session_from_file`."""
@@ -170,7 +177,11 @@ class InstaloaderContext:
         session_bytes = base64.decodestring(session_string.encode('ascii'))
         self._load_session(username, pickle.loads(session_bytes))
 
-    def _load_session(self, username, cookies_dict):
+    def _load_session(self, username, cookies_dict: Dict):
+        min_expire_time = cookies_dict.pop('__min_expire_time__', None)
+        if min_expire_time is not None and min_expire_time <= datetime.now(tz=timezone.utc):
+            raise Exception("Old Cookies")
+            
         session = self._session_provider.create_session()
         session.cookies = requests.utils.cookiejar_from_dict(cookies_dict)
         session.headers.update(self._default_http_header())
@@ -578,19 +589,22 @@ class SessionProvider:
         return new
 
     def create_session(self) -> requests.Session:
-        self.session = requests.Session()
+        self.session = self._get_session()
         return self.session
+    
+    def _get_session(self):
+        return requests.Session()
     
     def get_anonymous_session(self) -> requests.Session:
         """Returns our default anonymous requests.Session object."""
-        session = requests.Session()
+        session = self._get_session()
         session.cookies.update({'sessionid': '', 'mid': '', 'ig_pr': '1',
                                 'ig_vw': '1920', 'csrftoken': '',
                                 's_network': '', 'ds_user_id': ''})
-        session.headers.update(self._default_http_header(empty_session_only=True))
+        session.headers.update(self._context._default_http_header(empty_session_only=True))
         # Override default timeout behavior.
         # Need to silence mypy bug for this. See: https://github.com/python/mypy/issues/2427
-        session.request = partial(session.request, timeout=self.request_timeout) # type: ignore
+        session.request = partial(session.request, timeout=self._context.request_timeout) # type: ignore
         return session
 
 
