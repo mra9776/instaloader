@@ -4,7 +4,7 @@ import re
 from base64 import b64decode, b64encode
 from collections import namedtuple
 from contextlib import suppress
-from datetime import datetime
+from datetime import datetime, timezone
 from itertools import islice
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
@@ -272,7 +272,7 @@ class Post:
     @property
     def date_utc(self) -> datetime:
         """Timestamp when the post was created (UTC)."""
-        return datetime.utcfromtimestamp(self._get_timestamp_date_created())
+        return datetime.fromtimestamp(self._get_timestamp_date_created(), tz=timezone.utc)
 
     @property
     def date(self) -> datetime:
@@ -525,7 +525,7 @@ class Post:
         """
         def _postcommentanswer(node):
             return PostCommentAnswer(id=int(node['id']),
-                                     created_at_utc=datetime.utcfromtimestamp(node['created_at']),
+                                     created_at_utc=datetime.fromtimestamp(node['created_at'], tz=timezone.utc),
                                      text=node['text'],
                                      owner=Profile(self._context, node['owner']),
                                      likes_count=node.get('edge_liked_by', {}).get('count', 0))
@@ -1205,7 +1205,7 @@ class StoryItem:
     @property
     def date_utc(self) -> datetime:
         """Timestamp when the StoryItem was created (UTC)."""
-        return datetime.utcfromtimestamp(self._node['taken_at_timestamp'])
+        return datetime.fromtimestamp(self._node['taken_at_timestamp'], tz=timezone.utc)
 
     @property
     def date(self) -> datetime:
@@ -1225,7 +1225,7 @@ class StoryItem:
     @property
     def expiring_utc(self) -> datetime:
         """Timestamp when the StoryItem will get unavailable (UTC)."""
-        return datetime.utcfromtimestamp(self._node['expiring_at_timestamp'])
+        return datetime.fromtimestamp(self._node['expiring_at_timestamp'], tz=timezone.utc)
 
     @property
     def url(self) -> str:
@@ -1347,7 +1347,7 @@ class Story:
     def last_seen_utc(self) -> Optional[datetime]:
         """Timestamp of the most recent StoryItem that has been watched or None (UTC)."""
         if self._node['seen']:
-            return datetime.utcfromtimestamp(self._node['seen'])
+            return datetime.fromtimestamp(self._node['seen'], tz=timezone.utc)
         return None
 
     @property
@@ -1358,7 +1358,7 @@ class Story:
     @property
     def latest_media_utc(self) -> datetime:
         """Timestamp when the last item of the story was created (UTC)."""
-        return datetime.utcfromtimestamp(self._node['latest_reel_media'])
+        return datetime.fromtimestamp(self._node['latest_reel_media'], tz=timezone.utc)
 
     @property
     def itemcount(self) -> int:
