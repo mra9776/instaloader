@@ -578,7 +578,7 @@ class SessionProvider:
     
     def copy_session(self, request_timeout: Optional[float] = None) -> requests.Session:
         """Duplicates a requests.Session."""
-        new = requests.Session()
+        new = self._get_session()
         new.cookies = requests.utils.cookiejar_from_dict(requests.utils.dict_from_cookiejar(self.session.cookies))
         new.headers = self.session.headers.copy()
         new.proxies = self.session.proxies
