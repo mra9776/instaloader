@@ -178,7 +178,7 @@ class InstaloaderContext:
 
     def _load_session(self, username, cookies_dict: Dict):
         min_expire_time = cookies_dict.pop('__min_expire_time__', None)
-        if min_expire_time is not None and min_expire_time <= datetime.now(tz=timezone.utc):
+        if min_expire_time is not None and min_expire_time <= int(datetime.now(tz=timezone.utc).timestamp()):
             raise Exception("Old Cookies")
             
         session = self._session_provider.create_session()
