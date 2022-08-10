@@ -391,11 +391,11 @@ class InstaloaderContext:
             try:
                 if isinstance(err, TooManyRequestsException):
                     if is_graphql_query:
-                        self._rate_controller.handle_429(params['query_hash'])
+                        self._rate_controller.handle_429(params['query_hash'], err)
                     if is_iphone_query:
-                        self._rate_controller.handle_429('iphone')
+                        self._rate_controller.handle_429('iphone', err)
                     if is_other_query:
-                        self._rate_controller.handle_429('other')
+                        self._rate_controller.handle_429('other', err)
                 return self.get_json(path=path, params=params, host=host, session=sess, _attempt=_attempt + 1)
             except KeyboardInterrupt:
                 self.error("[skipped by user]", repeat_at_end=False)
@@ -485,7 +485,7 @@ class InstaloaderContext:
         :raises ConnectionException: When query repeatedly failed.
 
         .. versionadded:: 4.2.1"""
-        with self._session_provider.get_anonymous_session(self.request_timeout) as tempsession:
+        with self._session_provider.copy_session(self.request_timeout) as tempsession:
             tempsession.headers['User-Agent'] = 'Instagram 146.0.0.27.125 (iPhone12,1; iOS 13_3; en_US; en-US; ' \
                                                 'scale=2.00; 1656x3584; 190542906)'
             for header in ['Host', 'Origin', 'X-Instagram-AJAX', 'X-Requested-With']:
@@ -594,7 +594,7 @@ class SessionProvider:
     def _get_session(self):
         return requests.Session()
     
-    def get_anonymous_session(self, _request_timeout) -> requests.Session:
+    def get_anonymous_session(self, _request_timeout=None) -> requests.Session:
         """Returns our default anonymous requests.Session object."""
         session = self._get_session()
         session.cookies.update({'sessionid': '', 'mid': '', 'ig_pr': '1',
@@ -744,7 +744,7 @@ class RateController:
         else:
             self._query_timestamps[query_type].append(time.monotonic())
 
-    def handle_429(self, query_type: str) -> None:
+    def handle_429(self, query_type: str, err: Exception) -> None:
         """This method is called to handle a 429 Too Many Requests response.
 
         It calls :meth:`RateController.query_waittime` to determine the time needed to wait and then calls
