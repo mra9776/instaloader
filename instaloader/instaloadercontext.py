@@ -603,7 +603,7 @@ class SessionProvider:
         session.headers.update(self._context._default_http_header(empty_session_only=True))
         # Override default timeout behavior.
         # Need to silence mypy bug for this. See: https://github.com/python/mypy/issues/2427
-        session.request = partial(session.request, timeout=_request_timeout if _request_timeout is not None elseself._context.request_timeout) # type: ignore
+        session.request = partial(session.request, timeout=_request_timeout if _request_timeout is not None else self._context.request_timeout) # type: ignore
         return session
 
 
