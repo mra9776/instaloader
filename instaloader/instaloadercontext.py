@@ -233,7 +233,7 @@ class InstaloaderContext:
                 "Login error: JSON decode fail, {} - {}.".format(login.status_code, login.reason)
             ) from err
         if resp_json.get('two_factor_required'):
-            two_factor_session = self._session_provider.copy_session(session, self.request_timeout)
+            two_factor_session = self._session_provider.copy_session(self.request_timeout)
             two_factor_session.headers.update({'X-CSRFToken': csrf_token})
             two_factor_session.cookies.update({'csrftoken': csrf_token})
             self.two_factor_auth_pending = (two_factor_session,
@@ -485,7 +485,7 @@ class InstaloaderContext:
         :raises ConnectionException: When query repeatedly failed.
 
         .. versionadded:: 4.2.1"""
-        with self._session_provider.copy_session(self.request_timeout) as tempsession:
+        with self._session_provider.get_anonymous_session(self.request_timeout) as tempsession:
             tempsession.headers['User-Agent'] = 'Instagram 146.0.0.27.125 (iPhone12,1; iOS 13_3; en_US; en-US; ' \
                                                 'scale=2.00; 1656x3584; 190542906)'
             for header in ['Host', 'Origin', 'X-Instagram-AJAX', 'X-Requested-With']:
@@ -594,7 +594,7 @@ class SessionProvider:
     def _get_session(self):
         return requests.Session()
     
-    def get_anonymous_session(self) -> requests.Session:
+    def get_anonymous_session(self, _request_timeout) -> requests.Session:
         """Returns our default anonymous requests.Session object."""
         session = self._get_session()
         session.cookies.update({'sessionid': '', 'mid': '', 'ig_pr': '1',
@@ -603,7 +603,7 @@ class SessionProvider:
         session.headers.update(self._context._default_http_header(empty_session_only=True))
         # Override default timeout behavior.
         # Need to silence mypy bug for this. See: https://github.com/python/mypy/issues/2427
-        session.request = partial(session.request, timeout=self._context.request_timeout) # type: ignore
+        session.request = partial(session.request, timeout=_request_timeout if _request_timeout is not None elseself._context.request_timeout) # type: ignore
         return session
 
 
