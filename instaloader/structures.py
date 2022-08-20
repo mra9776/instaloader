@@ -292,6 +292,9 @@ class Post:
                 orig_url = self._iphone_struct['image_versions2']['candidates'][0]['url']
                 url = re.sub(r'([?&])se=\d+&?', r'\1', orig_url).rstrip('&')
                 return url
+            except ConnectionException as err:
+                if '403' in str(err):
+                    raise err
             except (InstaloaderException, KeyError, IndexError) as err:
                 self._context.error('{} Unable to fetch high quality image version of {}.'.format(err, self))
         return self._node["display_url"] if "display_url" in self._node else self._node["display_src"]
@@ -445,8 +448,11 @@ class Post:
             if self._context.iphone_support and self._context.is_logged_in:
                 try:
                     version_urls.extend(version['url'] for version in self._iphone_struct['video_versions'])
+                except ConnectionException as err:
+                    if '403' in str(err):
+                        raise err
                 except (InstaloaderException, KeyError, IndexError) as err:
-                    self._context.error(f"Unable to fetch high-quality video version of {self}: {err}")
+                    self._context.error(f"Unable to fetch high-quality video version of {self}: {err}")            
             version_urls = list(dict.fromkeys(version_urls))
             if len(version_urls) == 0:
                 return None
